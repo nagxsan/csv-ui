@@ -1,65 +1,142 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import { fetchTableData, TableDataResponse } from "@/lib/api";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectTrigger,
+  SelectItem,
+  SelectContent,
+  SelectValue
+} from "@/components/ui/select";
+
+export default function HomePage() {
+  const [table, setTable] = useState("product_purchases");
+  const [data, setData] = useState<TableDataResponse | null>(null);
+  const [page, setPage] = useState(1);
+
+  const [filters, setFilters] = useState({
+    sku__icontains: "",
+    price__gte: "",
+    price__lte: ""
+  });
+
+  async function load() {
+    const result = await fetchTableData({
+      table,
+      page,
+      limit: 10,
+      filters
+    });
+    setData(result);
+  }
+
+  useEffect(() => {
+    load();
+  }, [page]);
+
+  if (!data) return <div className="p-8">Loading...</div>;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="p-8 space-y-6">
+      <h1 className="text-2xl font-bold">Table Viewer</h1>
+
+      {/* Table selector */}
+      <div className="flex gap-4">
+        <Select onValueChange={setTable} defaultValue={table}>
+          <SelectTrigger className="w-60">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="products_query_test">products_query_test</SelectItem>
+            <SelectItem value="another_table">another_table</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button onClick={() => { setPage(1); load(); }}>
+          Load
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="grid grid-cols-3 gap-4">
+        <Input
+          placeholder="sku contains..."
+          value={filters.sku__icontains}
+          onChange={(e) =>
+            setFilters((f) => ({ ...f, sku__icontains: e.target.value }))
+          }
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        <Input
+          placeholder="price ≥"
+          value={filters.price__gte}
+          onChange={(e) =>
+            setFilters((f) => ({ ...f, price__gte: e.target.value }))
+          }
+        />
+        <Input
+          placeholder="price ≤"
+          value={filters.price__lte}
+          onChange={(e) =>
+            setFilters((f) => ({ ...f, price__lte: e.target.value }))
+          }
+        />
+        <Button onClick={() => { setPage(1); load(); }}>
+          Apply Filters
+        </Button>
+      </div>
+
+      {/* Data Table */}
+      <div className="border rounded-md">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {Object.keys(data.results[0] || {}).map((col) => (
+                <TableHead key={col}>{col}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+            {data.results.map((row, i) => (
+              <TableRow key={i}>
+                {Object.values(row).map((val, j) => (
+                  <TableCell key={j}>{String(val)}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Pagination */}
+      <div className="flex gap-4 items-center">
+        <Button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          Prev
+        </Button>
+
+        <span>
+          Page {data.page} / {data.total_pages}
+        </span>
+
+        <Button
+          disabled={page >= data.total_pages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }
+
