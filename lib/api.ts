@@ -1,5 +1,29 @@
 import { API_BASE } from "./config";
 
+export async function uploadCSV(formData: any) {
+  const res = await fetch(`${API_BASE}/upload-csv/`, {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+
+  return {
+    status: res.ok,
+    data
+  };
+}
+
+export async function fetchRelations() {
+  const res = await fetch(`${API_BASE}/get-relations/?mode=relations`)
+  if (!res.ok) throw new Error("Failed to fetch tables");
+  const data = await res.json();
+  if (data.count > 0) {
+    return data.relations;
+  }
+  return [];
+}
+
 export type TableDataResponse = {
   page: number;
   limit: number;
@@ -31,7 +55,7 @@ export async function fetchTableData(params: {
     }
   }
 
-  const res = await fetch(`${API_BASE}/get-table-data/?${query.toString()}`);
+  const res = await fetch(`${API_BASE}/get-table-data/?mode=table&${query.toString()}`);
 
   if (!res.ok) throw new Error("Failed to fetch table data");
   return res.json();

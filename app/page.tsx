@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchTableData, TableDataResponse } from "@/lib/api";
+import { uploadCSV, fetchRelations, fetchTableData, TableDataResponse } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -20,8 +20,18 @@ import {
   SelectValue
 } from "@/components/ui/select";
 
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
 export default function HomePage() {
-  const [table, setTable] = useState("product_purchases");
+  const [relations, setRelations] = useState<string[]>([]);
+  const [table, setTable] = useState<string | undefined>(undefined);
   const [data, setData] = useState<TableDataResponse | null>(null);
   const [page, setPage] = useState(1);
 
@@ -31,21 +41,70 @@ export default function HomePage() {
     price__lte: ""
   });
 
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  async function loadRelations() {
+    const result = await fetchRelations();
+    setRelations(result);
+  }
+
   async function load() {
-    const result = await fetchTableData({
-      table,
-      page,
-      limit: 10,
-      filters
-    });
-    setData(result);
+    if (table) {
+      const result = await fetchTableData({
+        table,
+        page,
+        limit: 10,
+        filters
+      });
+      setData(result);
+    }
   }
 
   useEffect(() => {
-    load();
-  }, [page]);
+    loadRelations();
+  }, []);
 
-  if (!data) return <div className="p-8">Loading...</div>;
+  useEffect(() => {
+    load();
+  }, [table, page]);
+
+  async function handleUpload() {
+    if (!file) {
+      setUploadMessage("Please select a CSV file.");
+      return;
+    }
+    if (!table) {
+      setUploadMessage("Please select a table first.");
+      return;
+    }
+
+    setUploadMessage("");
+    setUploadLoading(true);
+
+    const formData = new FormData();
+    formData.append("table_name", table);
+    formData.append("file", file);
+    // formData.append("strict", "true");
+
+    try {
+      const { status, data } = await uploadCSV(formData);
+
+      if (!status) {
+        setUploadMessage(data.detail || "Upload failed");
+      } else {
+        setUploadMessage(`Inserted rows: ${data.inserted_rows}`);
+        setOpen(false);
+        load();
+      }
+    } catch (err) {
+      setUploadMessage("Network error");
+    } finally {
+      setUploadLoading(false);
+    }
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -53,90 +112,96 @@ export default function HomePage() {
 
       {/* Table selector */}
       <div className="flex gap-4">
-        <Select onValueChange={setTable} defaultValue={table}>
+        <Select onValueChange={setTable} value={table}>
           <SelectTrigger className="w-60">
-            <SelectValue />
+            <SelectValue placeholder="Select a table" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="products_query_test">products_query_test</SelectItem>
-            <SelectItem value="another_table">another_table</SelectItem>
+            {relations.map((r) => (
+              <SelectItem key={r} value={r}>{r}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Button onClick={() => { setPage(1); load(); }}>
-          Load
-        </Button>
+        {/* Upload CSV dialog */}
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button disabled={!table}>Upload CSV</Button>
+          </DialogTrigger>
+
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Upload a CSV file to append to the existing relation
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-4 py-4">
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
+
+              {uploadMessage && (
+                <p className="text-sm text-red-500 mt-2">
+                  {uploadMessage}
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button disabled={uploadLoading} onClick={handleUpload}>
+                {uploadLoading ? "Uploading..." : "Upload"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-3 gap-4">
-        <Input
-          placeholder="sku contains..."
-          value={filters.sku__icontains}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, sku__icontains: e.target.value }))
-          }
-        />
-        <Input
-          placeholder="price ≥"
-          value={filters.price__gte}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, price__gte: e.target.value }))
-          }
-        />
-        <Input
-          placeholder="price ≤"
-          value={filters.price__lte}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, price__lte: e.target.value }))
-          }
-        />
-        <Button onClick={() => { setPage(1); load(); }}>
-          Apply Filters
-        </Button>
-      </div>
+      {/* Table */}
+      {data && (
+        <>
+          <div className="border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {Object.keys(data.results[0] || {}).map((col) => (
+                    <TableHead key={col}>{col}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
 
-      {/* Data Table */}
-      <div className="border rounded-md">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {Object.keys(data.results[0] || {}).map((col) => (
-                <TableHead key={col}>{col}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-
-          <TableBody>
-            {data.results.map((row, i) => (
-              <TableRow key={i}>
-                {Object.values(row).map((val, j) => (
-                  <TableCell key={j}>{String(val)}</TableCell>
+              <TableBody>
+                {data.results.map((row, i) => (
+                  <TableRow key={i}>
+                    {Object.values(row).map((val, j) => (
+                      <TableCell key={j}>{String(val)}</TableCell>
+                    ))}
+                  </TableRow>
                 ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+              </TableBody>
+            </Table>
+          </div>
 
-      {/* Pagination */}
-      <div className="flex gap-4 items-center">
-        <Button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-          Prev
-        </Button>
+          <div className="flex gap-4 items-center">
+            <Button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Prev
+            </Button>
 
-        <span>
-          Page {data.page} / {data.total_pages}
-        </span>
+            <span>
+              Page {data.page} / {data.total_pages}
+            </span>
 
-        <Button
-          disabled={page >= data.total_pages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next
-        </Button>
-      </div>
+            <Button
+              disabled={page >= data.total_pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
-
